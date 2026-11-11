@@ -1,8 +1,12 @@
+> 🇧🇷 [Versão em português](README.pt-BR.md)
+
 # Portal Notas: supplier invoice automation (public demo)
 
 Public, self-contained demo of a system I designed and built **solo**. The real one runs in **daily production** at a multi-campus private university in Brazil.
 
 Every month, suppliers (ISPs, SaaS, hosting, domain registrars) e-mail their invoices to a shared mailbox. The system reads that mailbox, extracts the data from the PDFs (text layer or OCR), pairs each invoice (*nota fiscal*, NF) with its payment slip (*boleto*), sends the thread to Purchasing and Fiscal, archives the package to SharePoint and sends Finance a consolidated spreadsheet. Before it existed, a person did all of this by hand.
+
+![Portal Notas demo: reading the mailbox, processing the queue with approval states and human review, month-by-month supplier grid](docs/portal-notas.gif)
 
 | Production numbers | |
 |---|---|
