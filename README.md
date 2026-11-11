@@ -33,7 +33,16 @@ Every month, suppliers (ISPs, SaaS, hosting, domain registrars) e-mail their inv
 | Approval workflow | Purchasing replies with the purchase-order number, Fiscal replies "FISCAL OK" with a cover sheet. Both replies are **parsed from the thread** with the production rules |
 | Archive & print | SharePoint archive (mocked URL) and a printable package: cover + NF + boleto merged into one PDF |
 | Finance | Consolidated `.xlsx` spreadsheet (openpyxl), downloadable and "sent" to Finance |
-| History | Completed and deleted threads; deleted ones can be restored to the queue |
+| Overview | Month counters, per-day sparkline, status donut, supplier calendar widget, the processing queue and the extracted NF-e table (purchasing/fiscal dates, SharePoint link, PO number) |
+| Month by month | Grid of tracked suppliers × months: arrived, overdue, due within 7 days, still on time, or marked *done outside*. Fed by the invoices as they arrive |
+| Due dates | Expected due day per supplier, situation (overdue / due soon / received / on demand / outside the portal), paid or unpaid for the cycle, and a header bell that warns about what has not arrived |
+| History + trash triage | Deleted e-mails grouped by category (scam, newsletter, other group's mailbox, payment reminder, handled, notice, account/system, other) with the suggested action; click a category to filter, restore from the table |
+| Direct send | Per-supplier rules: *forward the e-mail as it is* (protected PDFs) or *read and send the table*; then close or *wait for the cover* (Awaiting Cover → Ready to print) |
+| Routing settings | Purchasing/Fiscal addresses and recognized repliers, per-supplier Purchasing desk, senders/subjects removed on arrival (applied to the queue at once), daily Teams card preview, ticket-chasing terms with a preview |
+| Reports | Deadlines by supplier (when the invoice/boleto usually arrives, this month and next), what each sender sends (NF, boleto, both, none) and e-mail types with the rule that decided |
+| Descriptions | Default description per supplier key (with value-range rules), name normalization and the description template used for Purchasing |
+| System logs | Level, area and user per entry, with period/area/text filters and a live mode |
+| Restore | A deleted e-mail returns to the queue and to `Fila_Pendente` in the mailbox |
 | Observability | `/metrics` in Prometheus format (production charts these in Grafana) |
 | Bilingual | PT/EN toggle. In Portuguese, statuses show the production names (*Aguardando Compras*, *Pronto para Impressão*…); messages already on screen are translated too |
 
@@ -148,10 +157,11 @@ OLLAMA_URL=http://localhost:11434/api/chat OLLAMA_MODEL=llama3.1:8b uvicorn app.
 
 ```
 app/
-  api.py           route table shared by both runtimes
+  api.py           route table shared by both runtimes (api_portal.py: overview, month by month, triage, reports, settings)
   main.py          server runtime (FastAPI): session cookie, one sandbox per visitor
   browser.py       browser runtime (Pyodide): called by web/static/runtime.js
   sandbox.py       business logic: ingestion, processing, review, workflow, finance
+  portal.py        portal pages: expected-invoice calendar, month grid, trash triage, reports, settings
   extraction.py    PDF → text → classification → supplier → fields → NF/boleto records
   workflow.py      states, allowed transitions, mailbox folder mapping
   integrations.py  mocks: Graph mailbox, OCR, link scraper, local LLM, SharePoint, outbox
@@ -159,7 +169,7 @@ app/
   samples.py       fictional suppliers, documents and e-mails
   pdfgen.py        dependency-free PDF writer for the fixtures
 config/vendor_rules.json   supplier rules (same shape as production, fictional content)
-web/                       UI: index.html, static/ (app.js, i18n.js, runtime.js, app.css)
+web/                       UI: index.html, static/ (app.js, pages.js, boot.js, i18n.js, runtime.js, app.css)
 tools/build_site.py        static build for GitHub Pages (UI + Python package + pinned wheels)
 tests/                     pytest
 ```

@@ -8,7 +8,7 @@
     "PONTOCOM FIBRA": {"fornecedor": "PontoCom Fibra", "unidade": "Downtown Campus", "cnpj": "55.666.777/0001-25", "sender_domain": "pontocomfibra.example", "direct_to_fiscal": false},
     "NUVEMCERTA": {"fornecedor": "NuvemCerta Hosting", "unidade": "Headquarters", "cnpj": "66.777.888/0001-36", "sender_domain": "nuvemcerta.example", "direct_to_fiscal": true},
     "ASSINAFACIL": {"fornecedor": "AssinaFácil", "unidade": "Headquarters", "cnpj": "77.888.999/0001-47", "sender_domain": "assinafacil.example", "direct_to_fiscal": true},
-    "REGISTRA DOMINIOS": {"fornecedor": "Registra Domínios", "unidade": "Headquarters", "cnpj": "88.999.000/0001-58", "sender_domain": "registra.example", "direct_to_fiscal": true}
+    "NOMERAIZ DOMINIOS": {"fornecedor": "NomeRaiz Domínios", "unidade": "Headquarters", "cnpj": "88.999.000/0001-58", "sender_domain": "nomeraiz.example", "direct_to_fiscal": true}
   },
   "boleto_kw": ["boleto", "linha digitavel", "nosso numero", "cedente", "sacado", "codigo de barras", "beneficiario", "pagador", "vencimento", "agencia"],
   "nf_kw": ["nota fiscal", "nfs-e", "nf-e", "danfe", "chave de acesso", "prestador de servicos", "tomador de servicos", "discriminacao dos servicos", "inscricao municipal", "codigo de verificacao"],

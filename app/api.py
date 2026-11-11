@@ -9,6 +9,8 @@ One route table serves two runtimes:
 from __future__ import annotations
 
 import re
+from collections import Counter
+from datetime import timedelta
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import unquote
@@ -94,9 +96,38 @@ def _outbox(sb, req, p):
     return sb.outbox.messages
 
 
+def _log_rows(sb, req) -> list:
+    q = req.query
+    try:
+        days = int(q.get("days") or 7)
+    except ValueError:
+        days = 7
+    since = (sb.now() - timedelta(days=days)).isoformat(timespec="seconds")
+    needle = (q.get("q") or "").lower()
+    out = []
+    for r in sb.logs:
+        lvl = "INFO" if r["level"] == "SUCCESS" else r["level"]
+        if r["ts"] < since or q.get("level") not in (None, "", "all") and lvl != q["level"]:
+            continue
+        if q.get("area") not in (None, "", "all") and r["area"] != q["area"]:
+            continue
+        if needle and needle not in f'{localize(r["message"], req.lang)} {r["who"]} {r["area"]}'.lower():
+            continue
+        out.append(r)
+    return out
+
+
 @route("GET", "/api/logs")
 def _logs(sb, req, p):
-    return list(sb.logs)
+    return _log_rows(sb, req)[:300]
+
+
+@route("GET", "/api/logs/counts")
+def _log_counts(sb, req, p):
+    rows = list(sb.logs)
+    lv = Counter("INFO" if r["level"] == "SUCCESS" else r["level"] for r in rows)
+    return {"all": len(rows), "INFO": lv["INFO"], "WARNING": lv["WARNING"], "ERROR": lv["ERROR"],
+            "areas": sorted({r["area"] for r in rows})}
 
 
 @route("GET", "/api/invoices")
@@ -226,3 +257,6 @@ def dispatch(sb: Sandbox, req: Request) -> Tuple[int, Any]:
                 return 200, result
             return 200, localize(result, req.lang)
     return 404, {"success": False, "message": localize(T("Not found.", "Não encontrado."), req.lang)}
+
+
+from . import api_portal  # noqa: E402,F401  (registers the portal routes on ROUTES)

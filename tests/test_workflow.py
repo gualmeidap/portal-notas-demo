@@ -31,7 +31,7 @@ def test_seed_has_history_and_work_in_progress(sb):
 def test_happy_path_through_every_state(sb):
     em = by_sender(sb, "auroranet")
     assert sb.process(em.id)["status"] == wf.AWAITING_PURCHASING
-    assert sb.outbox.messages[0]["to"].startswith("compras@")
+    assert sb.outbox.messages[0]["to"] == "purchasing.south@university.example"  # per-supplier Purchasing rule
     sb.simulate_purchasing_reply(em.id)
     assert em.status == wf.READY_FOR_FISCAL and em.po_number
     sb.send_fiscal(em.id)
@@ -45,6 +45,7 @@ def test_happy_path_through_every_state(sb):
 
 
 def test_direct_to_fiscal_supplier_skips_purchasing_and_scraper_downloads_link(sb):
+    sb.portal.direct_rules.clear()  # the seeded forward rule is covered by its own test
     em = by_sender(sb, "assinafacil")
     assert not em.attachments
     sb.process(em.id)

@@ -4,175 +4,44 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Portal Notas · Demo</title>
-  <meta name="description" content="Public demo of a supplier-invoice automation system: e-mail ingestion, PDF/OCR extraction, approval workflow, SharePoint archive and Finance spreadsheet. Fictional data.">
+  <meta name="description" content="Public demo of a supplier-invoice automation portal: e-mail ingestion, PDF/OCR extraction, approval workflow, month-by-month tracking, SharePoint archive and Finance spreadsheet. Fictional data.">
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
   <link rel="stylesheet" href="static/app.css">
 </head>
 <body>
 <div class="demo-banner">
-  <span data-i18n-html="banner"></span>
+  <span id="banner-text"></span>
   <span class="banner-actions">
     <span class="lang-toggle" role="group" aria-label="Language">
       <button type="button" data-lang="pt">PT</button><button type="button" data-lang="en">EN</button>
     </span>
-    <button class="link" id="btn-reset" type="button" data-i18n="reset"></button>
+    <button class="link" id="btn-reset" type="button"></button>
+    <a id="src-link" href="https://github.com/gualmeidap/portal-notas-demo" target="_blank" rel="noopener"></a>
   </span>
 </div>
 <div id="boot" class="boot" hidden>
   <div class="boot-card">
-    <div class="logo">NF</div>
+    <div class="logo-mark" id="boot-logo"></div>
     <h2>Portal Notas</h2>
     <p id="boot-step"></p>
     <div class="boot-bar"><div id="boot-fill"></div></div>
-    <p class="muted small" data-i18n="boot_note"></p>
+    <p class="muted small" id="boot-note"></p>
   </div>
 </div>
-<div class="shell">
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="logo">NF</div>
-      <div><strong>Portal Notas</strong><small data-i18n="brand_sub"></small></div>
-    </div>
-    <nav id="nav">
-      <a data-tab="dashboard" class="active" data-i18n="nav_dashboard"></a>
-      <a data-tab="queue"><span data-i18n="nav_queue"></span> <span class="count" id="count-queue"></span></a>
-      <a data-tab="workflow"><span data-i18n="nav_workflow"></span> <span class="count" id="count-workflow"></span></a>
-      <a data-tab="invoices" data-i18n="nav_invoices"></a>
-      <a data-tab="history" data-i18n="nav_history"></a>
-      <a data-tab="vendors" data-i18n="nav_vendors"></a>
-      <a data-tab="manual" data-i18n="nav_manual"></a>
-      <a data-tab="outbox" data-i18n="nav_outbox"></a>
-      <a data-tab="logs" data-i18n="nav_logs"></a>
-    </nav>
-    <div class="sidebar-foot">
-      <span class="small muted" id="runtime-note"></span>
-      <a href="https://github.com/gualmeidap/portal-notas-demo" target="_blank" rel="noopener" data-i18n="source"></a>
-    </div>
-  </aside>
-
-  <main>
-    <!-- DASHBOARD -->
-    <section id="tab-dashboard" class="tab active">
-      <header class="page-head">
-        <div><h1 data-i18n="nav_dashboard"></h1><p class="muted" data-i18n="dash_sub"></p></div>
-        <div class="actions">
-          <label class="switch"><input type="checkbox" id="monitor-toggle"><span data-i18n="monitor"></span></label>
-          <button id="btn-fetch" class="btn" data-i18n="check_inbox"></button>
-          <button id="btn-process-all" class="btn primary" data-i18n="process_queue"></button>
-        </div>
-      </header>
-      <div class="kpis" id="kpis"></div>
-      <div class="panel">
-        <h2 data-i18n="where_title"></h2>
-        <div class="pipeline" id="pipeline"></div>
-      </div>
-      <div class="grid-2">
-        <div class="panel">
-          <h2 data-i18n="by_supplier"></h2>
-          <div id="by-supplier" class="bars"></div>
-        </div>
-        <div class="panel">
-          <h2 data-i18n="try_it"></h2>
-          <ol class="tour" data-i18n-html="tour"></ol>
-        </div>
-      </div>
-    </section>
-
-    <!-- QUEUE -->
-    <section id="tab-queue" class="tab">
-      <header class="page-head">
-        <div><h1 data-i18n="nav_queue"></h1><p class="muted" data-i18n-html="queue_sub"></p></div>
-        <div class="actions">
-          <button class="btn" data-run="fetch" data-i18n="check_inbox"></button>
-          <button class="btn primary" data-run="process-all" data-i18n="process_queue"></button>
-        </div>
-      </header>
-      <div class="panel flush"><table class="table" id="queue-table"></table></div>
-    </section>
-
-    <!-- WORKFLOW -->
-    <section id="tab-workflow" class="tab">
-      <header class="page-head">
-        <div><h1 data-i18n="nav_workflow"></h1><p class="muted" data-i18n="workflow_sub"></p></div>
-      </header>
-      <div class="board" id="board"></div>
-    </section>
-
-    <!-- INVOICES -->
-    <section id="tab-invoices" class="tab">
-      <header class="page-head">
-        <div><h1 data-i18n="nav_invoices"></h1><p class="muted" data-i18n="invoices_sub"></p></div>
-        <div class="actions">
-          <button class="btn" data-file="api/invoices/export.xlsx" data-i18n="download_xlsx"></button>
-          <button class="btn primary" id="btn-finance" data-i18n="send_finance"></button>
-        </div>
-      </header>
-      <div class="panel flush"><table class="table" id="invoice-table"></table></div>
-    </section>
-
-    <!-- HISTORY -->
-    <section id="tab-history" class="tab">
-      <header class="page-head">
-        <div><h1 data-i18n="nav_history"></h1><p class="muted" data-i18n-html="history_sub"></p></div>
-      </header>
-      <div class="panel flush"><table class="table" id="history-table"></table></div>
-    </section>
-
-    <!-- VENDORS -->
-    <section id="tab-vendors" class="tab">
-      <header class="page-head">
-        <div><h1 data-i18n="nav_vendors"></h1><p class="muted" data-i18n="vendors_sub"></p></div>
-        <div class="actions">
-          <label class="btn" for="ai-file" data-i18n="ai_register"></label>
-          <input type="file" id="ai-file" accept="application/pdf" hidden>
-          <button class="btn primary" id="btn-new-vendor" data-i18n="new_vendor"></button>
-        </div>
-      </header>
-      <div class="panel flush"><table class="table" id="vendor-table"></table></div>
-    </section>
-
-    <!-- MANUAL -->
-    <section id="tab-manual" class="tab">
-      <header class="page-head">
-        <div><h1 data-i18n="nav_manual"></h1><p class="muted" data-i18n="manual_sub"></p></div>
-      </header>
-      <div class="grid-2">
-        <div class="panel">
-          <h2 data-i18n="manual_step1"></h2>
-          <label class="dropzone" id="dropzone">
-            <input type="file" id="manual-files" accept="application/pdf" multiple hidden>
-            <strong data-i18n="drop_here"></strong><span class="muted" data-i18n="drop_hint"></span>
-          </label>
-          <p class="muted small" data-i18n="sample_hint"></p>
-          <div id="sample-links" class="chips"></div>
-        </div>
-        <div class="panel">
-          <h2 data-i18n="manual_step2"></h2>
-          <div id="manual-preview"><p class="muted" data-i18n="manual_empty"></p></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- OUTBOX -->
-    <section id="tab-outbox" class="tab">
-      <header class="page-head">
-        <div><h1 data-i18n="nav_outbox"></h1><p class="muted" data-i18n="outbox_sub"></p></div>
-      </header>
-      <div id="outbox-list" class="stack"></div>
-    </section>
-
-    <!-- LOGS -->
-    <section id="tab-logs" class="tab">
-      <header class="page-head"><div><h1 data-i18n="nav_logs"></h1><p class="muted" data-i18n="logs_sub"></p></div></header>
-      <div class="panel flush"><table class="table mono" id="log-table"></table></div>
-    </section>
-  </main>
+<div class="shell" id="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="content">
+    <header class="topbar" id="topbar"></header>
+    <main id="page"></main>
+  </div>
 </div>
-
 <dialog id="modal"><div class="modal-body" id="modal-body"></div></dialog>
 <div id="toasts"></div>
 <script src="static/mode.js"></script>
 <script src="static/i18n.js"></script>
 <script src="static/runtime.js"></script>
 <script src="static/app.js"></script>
+<script src="static/pages.js"></script>
+<script src="static/boot.js"></script>
 </body>
 </html>

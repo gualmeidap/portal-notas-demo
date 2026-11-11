@@ -18,7 +18,7 @@ TOMADOR_CNPJ = "00.111.222/0001-00"
 PURCHASING_ADDR = "compras@university.example"
 FISCAL_ADDR = "fiscal@university.example"
 FINANCE_ADDR = "financeiro@university.example"
-MAILBOX_ADDR = "contratos.ti@university.example"
+MAILBOX_ADDR = "invoices.desk@university.example"
 
 
 @dataclass
@@ -186,13 +186,13 @@ def supplier_emails(today: date, month_offset: int = 0, seq: int = 0) -> dict:
                     "ASSINAFACIL TECNOLOGIA LTDA", "77.888.999/0001-47", n, emissao, venc, "389,00",
                     "Plano empresarial de assinatura eletrônica", comp))]},
         ),
-        "REGISTRA DOMINIOS": SampleEmail(
-            "cobranca@registra.example", "Renovação de domínio - documento fiscal",
-            "A nota fiscal da renovação está em https://faturas.registra.example/doc/rg" + str(n),
+        "NOMERAIZ DOMINIOS": SampleEmail(
+            "cobranca@nomeraiz.example", "Renovação de domínio - documento fiscal",
+            "A nota fiscal da renovação está em https://faturas.nomeraiz.example/doc/rg" + str(n),
             [],
-            links={f"https://faturas.registra.example/doc/rg{n}": [
-                Attachment(f"Registra_NF_{n}.pdf", combined_lines(
-                    "REGISTRA DOMINIOS E HOSPEDAGEM LTDA", "88.999.000/0001-58", n, emissao, venc, "140,00",
+            links={f"https://faturas.nomeraiz.example/doc/rg{n}": [
+                Attachment(f"NomeRaiz_NF_{n}.pdf", combined_lines(
+                    "NOMERAIZ DOMINIOS E HOSPEDAGEM LTDA", "88.999.000/0001-58", n, emissao, venc, "140,00",
                     "Renovação anual de domínios institucionais", comp))]},
         ),
     }

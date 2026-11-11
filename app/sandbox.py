@@ -24,7 +24,8 @@ from .extraction import DocumentData, Extractor, fold, format_brl, load_rules, p
 from .i18n import T, tjoin
 from .integrations import LocalLLM, MockOCR, MockScraper, MockSharePoint, Outbox
 from .pdfgen import render_pdf
-from .samples import (FINANCE_ADDR, FISCAL_ADDR, PURCHASING_ADDR, Attachment, SampleEmail, manual_samples,
+from .portal import Portal, categorize, seed_logs, seed_rules, seed_trash
+from .samples import (FINANCE_ADDR, Attachment, SampleEmail, manual_samples,
                       newsletter_email, supplier_emails, unknown_vendor_email)
 
 OCR_MIN_CONFIDENCE = 0.80
@@ -66,6 +67,8 @@ class Email:
     vendor_reply: Optional[List[Attachment]] = None
     invoice_requested: bool = False
     cover: Optional[Attachment] = None
+    category: str = ""         # trash triage category (set when deleted)
+    reason: object = ""        # "" or T: why the e-mail left the queue
 
 
 class Sandbox:
@@ -82,10 +85,11 @@ class Sandbox:
         self.scraper = MockScraper(self.links)
         self.sharepoint = MockSharePoint()
         self.llm = LocalLLM()
-        self.logs: deque = deque(maxlen=500)
+        self.logs: deque = deque(maxlen=1500)
         self.monitor = False
         self._clock: Optional[datetime] = None
         self._po_seq = 4700
+        self.portal = Portal(date.today())
         if seed:
             _seed(self)
 
@@ -93,8 +97,9 @@ class Sandbox:
     def now(self) -> datetime:
         return self._clock or datetime.now().replace(microsecond=0)
 
-    def log(self, level: str, message: T) -> None:
-        self.logs.appendleft({"ts": self.now().isoformat(timespec="seconds"), "level": level, "message": message})
+    def log(self, level: str, message: T, area: str = "Portal", who: str = "system") -> None:
+        self.logs.appendleft({"ts": self.now().isoformat(timespec="seconds"), "level": level, "message": message,
+                              "area": area, "who": who})
 
     def _get(self, email_id: str) -> Email:
         em = self.emails.get(email_id)
@@ -125,10 +130,49 @@ class Sandbox:
                             "folder": "Inbox/Fila_Pendente", "read": False})
         return em
 
+    def addr_purchasing(self) -> str:
+        return self.portal.settings["purchasing"]["receives"]
+
+    def addr_fiscal(self) -> str:
+        return self.portal.settings["fiscal"]["receives"]
+
+    def _sector_lists(self) -> tuple:
+        s = self.portal.settings
+        return [s["purchasing"]["receives"], *s["purchasing"]["also"]], [s["fiscal"]["receives"], *s["fiscal"]["also"]]
+
+    def supplier_of_sender(self, sender: str) -> str:
+        s = sender.lower()
+        for info in self.rules["vendor_map"].values():
+            d = info.get("sender_domain")
+            if d and s.endswith(d):
+                return info["fornecedor"]
+        return ""
+
+    def forward_rule(self, em: "Email") -> Optional[dict]:
+        name = self.supplier_of_sender(em.sender)
+        return next((r for r in self.portal.direct_rules if name and r["how"] == "forward"
+                     and r["supplier"].lower() == name.lower()), None)
+
+    def apply_removal_rules(self, em: "Email") -> bool:
+        """Senders/subjects listed under 'E-mails outside the system' leave the queue as soon as they arrive."""
+        hit = self.portal.matches_removal(em.sender, em.subject)
+        if not hit or em.status != wf.PENDING:
+            return False
+        em.category = categorize(em.sender, em.subject)
+        em.reason = T(f"Removed automatically by the rule '{hit}'", f"Removido automaticamente pela regra '{hit}'")
+        self._set_status(em, wf.DELETED, T(f"Removed by the rule '{hit}' (moved to Fila_Excluidos)",
+                                           f"Removido pela regra '{hit}' (movido para Fila_Excluidos)"))
+        self.log("INFO", T(f"Rule '{hit}' removed '{em.subject}' from {em.sender}.",
+                           f"A regra '{hit}' removeu '{em.subject}' de {em.sender}."))
+        return True
+
     # ── mailbox ──────────────────────────────────────────────────────────────
     def fetch_inbox(self) -> List[Email]:
         new = [self.add_email(s) for s in self.incoming]
         self.incoming = []
+        self.portal.last_sync = self.now()
+        for em in new:
+            self.apply_removal_rules(em)
         count("emails_ingested_total", len(new))
         if new:
             self.log("INFO", T(f"Mailbox sync (Graph): {len(new)} new message(s) queued as Pending.",
@@ -165,6 +209,9 @@ class Sandbox:
     def process(self, email_id: str) -> dict:
         em = self._get(email_id)
         wf.check("process", em.status)
+        if self.forward_rule(em):
+            raise DemoError(T("This supplier is set to be forwarded as it is (Settings › Direct send): use Forward.",
+                              "Este fornecedor está configurado para ser encaminhado como está (Configurações › Envio direto): use Encaminhar."), 409)
         started = time.perf_counter()
         em.needs_review = False
 
@@ -257,13 +304,23 @@ class Sandbox:
             em.invoice_ids.append(inv_id)
         em.issue = ""
         em.needs_review = False
+        for r in records:
+            self.portal.record_arrival(r["fornecedor"], r.get("vencimento", ""), r["numero"], r["valor_num"],
+                                       r.get("emissao", ""), em.id)
         direct = all(r.get("direct_to_fiscal") for r in records)
-        target = wf.AWAITING_FISCAL if direct else wf.AWAITING_PURCHASING
-        to = FISCAL_ADDR if direct else PURCHASING_ADDR
+        rule = next((x for x in self.portal.direct_rules if x["supplier"].lower() == records[0]["fornecedor"].lower()), None)
+        buy = next((x for x in self.portal.purchasing_rules
+                    if x["supplier"].lower() == records[0]["fornecedor"].lower()), None)
+        if rule:  # direct-send rule: the table goes to a person, Purchasing and Fiscal are skipped
+            target = wf.DONE if rule["after"] == "close" else wf.AWAITING_COVER
+            to, kind = rule["dest"], "fiscal"
+        elif direct:
+            target, to, kind = wf.AWAITING_FISCAL, self.addr_fiscal(), "fiscal"
+        else:
+            target, to, kind = wf.AWAITING_PURCHASING, (buy["to"] if buy else self.addr_purchasing()), "purchasing"
         self._set_status(em, target, note + T(f"; forwarded to {to}", f"; encaminhado para {to}"))
         self.outbox.send(self.now(), to, f"ENC: {em.subject}",
-                         self._summary_text(em), [a.filename for a in em.attachments],
-                         kind="fiscal" if direct else "purchasing")
+                         self._summary_text(em), [a.filename for a in em.attachments], kind=kind)
         count("invoices_extracted_total", len(records))
         count("emails_processed_total")
         self.log("SUCCESS", T(f"{em.sender}: {len(records)} invoice(s) extracted -> {target}.",
@@ -279,7 +336,7 @@ class Sandbox:
         return "\n".join(lines)
 
     def process_queue(self) -> dict:
-        pending = [e for e in self.emails.values() if e.status == wf.PENDING]
+        pending = [e for e in self.emails.values() if e.status == wf.PENDING and not self.forward_rule(e)]
         moved = 0
         for em in sorted(pending, key=lambda e: e.received_at):
             res = self.process(em.id)
@@ -292,6 +349,8 @@ class Sandbox:
     def delete(self, email_id: str) -> dict:
         em = self._get(email_id)
         wf.check("delete", em.status)
+        em.category = categorize(em.sender, em.subject)
+        em.reason = ""
         self._set_status(em, wf.DELETED, T("Deleted by the operator (moved to Fila_Excluidos, marked read)",
                                            "Excluído pelo operador (movido para Fila_Excluidos, marcado como lido)"))
         self.log("INFO", T(f"Deleted: '{em.subject}' from {em.sender}.", f"Excluído: '{em.subject}' de {em.sender}."))
@@ -325,7 +384,7 @@ class Sandbox:
         if not em.invoice_requested:
             raise DemoError(T("Request the invoice from the supplier first.",
                               "Peça a nota fiscal ao fornecedor primeiro."), 409)
-        reply = parse_thread_reply(em.sender, "Segue a nota fiscal em anexo.", [PURCHASING_ADDR], [FISCAL_ADDR])
+        reply = parse_thread_reply(em.sender, "Segue a nota fiscal em anexo.", *self._sector_lists())
         self.log("INFO", T(f"Thread reply from {em.sender} classified as '{reply['kind']}' with attachment.",
                            f"Resposta de {em.sender} na thread classificada como '{reply['kind']}', com anexo."))
         em.attachments = em.attachments + list(em.vendor_reply or [])
@@ -340,7 +399,7 @@ class Sandbox:
         wf.check("simulate_purchasing_reply", em.status)
         self._po_seq += 17
         body = f"Bom dia, lançado. PEDIDO: {self._po_seq:06d}"
-        reply = parse_thread_reply(PURCHASING_ADDR, body, [PURCHASING_ADDR], [FISCAL_ADDR])
+        reply = parse_thread_reply(self.addr_purchasing(), body, *self._sector_lists())
         em.po_number = reply.get("po_number") or ""
         self._set_status(em, wf.READY_FOR_FISCAL, T(f"Purchasing replied: \"{body}\" -> PO {em.po_number}",
                                                     f"Compras respondeu: \"{body}\" -> pedido {em.po_number}"))
@@ -352,10 +411,11 @@ class Sandbox:
     def send_fiscal(self, email_id: str) -> dict:
         em = self._get(email_id)
         wf.check("send_fiscal", em.status)
-        self.outbox.send(self.now(), FISCAL_ADDR, f"ENC: {em.subject} (pedido {em.po_number})",
+        fiscal = self.addr_fiscal()
+        self.outbox.send(self.now(), fiscal, f"ENC: {em.subject} (pedido {em.po_number})",
                          self._summary_text(em), [a.filename for a in em.attachments], kind="fiscal")
-        self._set_status(em, wf.AWAITING_FISCAL, T(f"Forwarded to {FISCAL_ADDR} with PO {em.po_number}",
-                                                   f"Encaminhado para {FISCAL_ADDR} com o pedido {em.po_number}"))
+        self._set_status(em, wf.AWAITING_FISCAL, T(f"Forwarded to {fiscal} with PO {em.po_number}",
+                                                   f"Encaminhado para {fiscal} com o pedido {em.po_number}"))
         self.log("INFO", T(f"Sent to Fiscal: '{em.subject}'.", f"Enviado ao Fiscal: '{em.subject}'."))
         return {"status": em.status, "message": T("Forwarded to Fiscal.", "Encaminhado ao Fiscal.")}
 
@@ -363,7 +423,7 @@ class Sandbox:
         em = self._get(email_id)
         wf.check("simulate_fiscal_reply", em.status)
         body = "FISCAL OK - documento lançado. Capa em anexo."
-        reply = parse_thread_reply(FISCAL_ADDR, body, [PURCHASING_ADDR], [FISCAL_ADDR])
+        reply = parse_thread_reply(self.addr_fiscal(), body, *self._sector_lists())
         assert reply["kind"] == "fiscal"
         em.cover = Attachment("Capa_Fiscal.pdf", self._cover_lines(em))
         supplier = self.invoices[em.invoice_ids[0]]["fornecedor"] if em.invoice_ids else "Unknown"
@@ -384,8 +444,37 @@ class Sandbox:
         self.log("SUCCESS", T(f"Completed: '{em.subject}'.", f"Concluído: '{em.subject}'."))
         return {"status": em.status, "message": T("Completed.", "Concluído.")}
 
-    ACTIONS = ("process", "delete", "restore", "request_invoice", "simulate_supplier_reply",
-               "simulate_purchasing_reply", "send_fiscal", "simulate_fiscal_reply", "finalize")
+    def forward(self, email_id: str) -> dict:
+        """Direct-send supplier whose PDF is protected: the e-mail goes on as it is, without reading the PDF."""
+        em = self._get(email_id)
+        wf.check("forward", em.status)
+        rule = self.forward_rule(em)
+        if not rule:
+            raise DemoError(T("There is no direct-send rule for this sender.",
+                              "Não há regra de envio direto para este remetente."), 409)
+        self.outbox.send(self.now(), rule["dest"], f"ENC: {em.subject}", "", [a.filename for a in em.attachments],
+                         kind="fiscal")
+        self.portal.record_arrival(rule["supplier"], "", "-", 0.0, "", em.id)
+        target = wf.DONE if rule["after"] == "close" else wf.AWAITING_COVER
+        self._set_status(em, target, T(f"Forwarded as it is to {rule['dest']} (direct-send rule, PDF not read)",
+                                       f"Encaminhado como está para {rule['dest']} (regra de envio direto, PDF não lido)"))
+        self.log("INFO", T(f"Forwarded '{em.subject}' to {rule['dest']}.", f"'{em.subject}' encaminhado para {rule['dest']}."))
+        return {"status": em.status, "message": T(f"Forwarded to {rule['dest']}.", f"Encaminhado para {rule['dest']}.")}
+
+    def simulate_cover_reply(self, email_id: str) -> dict:
+        em = self._get(email_id)
+        wf.check("simulate_cover_reply", em.status)
+        rule = self.forward_rule(em) or {}
+        em.cover = Attachment("Capa_Pagamento.pdf", self._cover_lines(em))
+        em.sharepoint_url = self.sharepoint.upload_package(rule.get("supplier") or "Direct send", self.now(),
+                                                           [a.filename for a in em.attachments])
+        self._set_status(em, wf.READY_TO_PRINT, T("The person who pays sent the cover back; package archived to SharePoint",
+                                                  "Quem paga devolveu a capa; pacote arquivado no SharePoint"))
+        count("sharepoint_uploads_total")
+        return {"status": em.status, "message": T("Cover received. Ready to print.", "Capa recebida. Pronto para impressão.")}
+
+    ACTIONS = ("process", "forward", "delete", "restore", "request_invoice", "simulate_supplier_reply",
+               "simulate_purchasing_reply", "send_fiscal", "simulate_fiscal_reply", "simulate_cover_reply", "finalize")
 
     def run_action(self, email_id: str, action: str) -> dict:
         if action not in self.ACTIONS:
@@ -528,8 +617,10 @@ class Sandbox:
             em = self.emails[inv["email_id"]]
             if em.status == wf.DELETED:
                 continue
+            at = {t["status"]: t["ts"] for t in reversed(em.timeline)}
             rows.append({**inv, "status": em.status, "po_number": em.po_number, "sharepoint_url": em.sharepoint_url,
-                         "process_type": em.process_type, "sender": em.sender})
+                         "process_type": em.process_type, "sender": em.sender, "description": self.portal.describe(inv),
+                         "purchasing_at": at.get(wf.READY_FOR_FISCAL, ""), "fiscal_at": at.get(wf.READY_TO_PRINT, "")})
         return rows
 
     def finance_xlsx(self) -> bytes:
@@ -585,7 +676,9 @@ class Sandbox:
             "has_link": bool(not em.attachments and "https://" in em.body),
             "folder": folder, "read": is_read, "po_number": em.po_number, "sharepoint_url": em.sharepoint_url,
             "process_type": em.process_type, "invoice_requested": em.invoice_requested,
-            "has_package": em.cover is not None,
+            "has_package": em.cover is not None, "manual": em.process_type == "Manual",
+            "attach_count": len(em.attachments), "bulk": len(em.invoice_ids) > 1 or len(em.attachments) > 2,
+            "can_forward": em.status == wf.PENDING and self.forward_rule(em) is not None,
             "supplier": invs[0]["fornecedor"] if invs else "",
             "total": format_brl(sum(i["valor_num"] for i in invs)) if invs else "",
             "updated_at": em.timeline[-1]["ts"] if em.timeline else em.received_at.isoformat(),
@@ -595,7 +688,8 @@ class Sandbox:
         return out
 
     def list_emails(self, view: str) -> List[dict]:
-        groups = {"queue": wf.QUEUE, "workflow": wf.BOARD, "history": wf.CLOSED, "all": tuple(wf.PRODUCTION_NAMES)}
+        groups = {"queue": wf.QUEUE, "workflow": wf.BOARD, "open": wf.QUEUE + wf.BOARD, "history": wf.CLOSED,
+                  "all": tuple(wf.PRODUCTION_NAMES)}
         if view not in groups:
             raise DemoError(T("view must be queue, workflow, history or all.",
                               "view deve ser queue, workflow, history ou all."))
@@ -709,7 +803,7 @@ def _seed(sb: Sandbox) -> None:
     place("FIBRANORTE", 30, wf.AWAITING_PURCHASING)
     place("VALELINK", 70, wf.READY_FOR_FISCAL)
     place("NUVEMCERTA", 50, wf.AWAITING_FISCAL)
-    place("REGISTRA DOMINIOS", 90, wf.READY_TO_PRINT)
+    place("NOMERAIZ DOMINIOS", 90, wf.READY_TO_PRINT)
 
     # …and some still waiting in the queue.
     for key, hours in (("AURORA NET", 5), ("ASSINAFACIL", 3), ("PONTOCOM FIBRA", 2)):
@@ -722,10 +816,13 @@ def _seed(sb: Sandbox) -> None:
     sb.incoming = [scanned, unknown_vendor_email(today)]
 
     sb._clock = None
+    seed_trash(sb)
+    seed_rules(sb)
     sb.logs.clear()
     sb.outbox.messages = sb.outbox.messages[:12]
     sb.log("SUCCESS", T("Demo sandbox ready: in-memory data, fictional suppliers, mocked Microsoft 365.",
                         "Sandbox da demo pronta: dados em memória, fornecedores fictícios, Microsoft 365 simulado."))
+    seed_logs(sb)
 
 
 class SandboxManager:
