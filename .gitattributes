@@ -1,4 +1,3 @@
-# Keep GitHub's language bar honest: templates and static assets are not the project's language.
-templates/** linguist-vendored
-static/** linguist-vendored
+# Keep GitHub's language bar honest: the UI assets are not the project's language.
+web/** linguist-vendored
 docs/** linguist-documentation

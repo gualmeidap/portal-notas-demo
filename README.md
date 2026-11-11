@@ -1,162 +1,173 @@
-> **English summary:** public demo of a tax-document automation system I built (Python, FastAPI, Tesseract OCR). It reads supplier invoices and payment slips from corporate mailboxes, extracts structured data, and routes low-confidence extractions to a human review queue instead of guessing. The production version is private; this demo runs on in-memory fake data. Live demo: https://api-notas-demo.onrender.com/ (free tier, first load can take up to a minute).
+# Portal Notas: supplier invoice automation (public demo)
 
-<div align="center">
-  
-# 📄 Automação Fiscal (Ambiente de Demonstração)
+Public, self-contained demo of a system I designed and built **solo**. The real one runs in **daily production** at a multi-campus private university in Brazil.
 
-![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
-![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white)
-![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white)
+Every month, suppliers (ISPs, SaaS, hosting, domain registrars) e-mail their invoices to a shared mailbox. The system reads that mailbox, extracts the data from the PDFs (text layer or OCR), pairs each invoice (*nota fiscal*, NF) with its payment slip (*boleto*), sends the thread to Purchasing and Fiscal, archives the package to SharePoint and sends Finance a consolidated spreadsheet. Before it existed, a person did all of this by hand.
 
-Este é o ambiente de demonstração *white-label* do sistema de **Automação Fiscal**. Ele simula a leitura, extração OCR e armazenamento de Notas Fiscais, sem expor dados reais da empresa ou depender de serviços complexos em background. Tudo ocorre em memória para facilitar apresentações e homologação de layouts.
+| Production numbers | |
+|---|---|
+| Invoices processed | **~50 per month** |
+| Suppliers | **~30**, each with its own PDF layout |
+| Manual work | **~85% less** (my estimate: time per invoice before vs. after) |
+| Status | Daily production use; developed since March 2026 (~200 commits) |
 
-</div>
-
-<br>
-
-<div align="center">
-  <img src="docs/capturas/fluxo-automacao.gif" alt="Dashboard Mockup" width="800" style="border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-</div>
+> **Live demo: https://gualmeidap.github.io/portal-notas-demo/** (English and Portuguese, toggle at the top right)
+>
+> It runs **entirely in your browser**: the same Python code and tests in this repository are loaded into [Pyodide](https://pyodide.org) (CPython compiled to WebAssembly), so there is no server, no cold start and nothing you do leaves your machine. First load takes a few seconds.
+>
+> All data in this repository is **fictional**: supplier names, CNPJs, amounts and e-mail addresses (reserved `.example` domain). Microsoft 365, SharePoint, OCR, the LLM and supplier portals are replaced by in-memory mocks with the same contracts. No code, data or credentials from the production system are included.
 
 ---
 
-## ✨ Principais Funcionalidades (Simuladas)
+## What you can try in the demo
 
-- 📥 **Monitoramento de Caixa de Entrada**: Simula a busca de e-mails em caixas corporativas (ex. `compras`, `fiscal`).
-- 🤖 **Extração Automática (OCR Fake)**: Demonstra o carregamento e extração de dados estruturados (CNPJ, Valor, Fornecedor) a partir de anexos PDF e XML.
-- 📤 **Envio Manual**: Upload de PDF/XML com separação e roteamento por fornecedor.
-- 🏢 **Gestão de Fornecedores**: Dicionário de chaves por unidade, com extração assistida a partir de um PDF.
-- 📖 **Descrições e Normalizações**: Mapeia razões sociais divergentes para uma chave única e define a descrição padrão de cada fornecedor.
-- 📊 **Relatório de Fornecedores**: Consolida quem envia Nota Fiscal e quem envia Boleto.
-- 👥 **Controle de Acesso (RBAC)**: Administrador global e operadores restritos a uma caixa.
-- 🛡️ **Auditoria e Logs**: Trilha das ações administrativas e log de execução do robô.
-- ⚙️ **Workflow de Aprovação**: Ações simuladas de encaminhamento para o setor fiscal, aprovação de despesas e exclusão.
+| Feature | In the demo |
+|---|---|
+| Mailbox ingestion | "Check inbox" pulls new messages (mocked Microsoft Graph); the queue mirrors the mailbox folders (`Fila_Pendente`, `Fila_Excluidos`) and the read/unread flag |
+| Extraction | **Real**: the engine reads actual PDF bytes (pypdf), classifies boleto / NF / combined, applies supplier rules and regex patterns, pairs NF and boleto by amount |
+| OCR | Scanned samples have no text layer, so the engine takes the OCR branch. The transcription is pre-computed (no Tesseract in the demo). Reads below 80% confidence go to human review |
+| Human review | Editable preview: missing or doubtful fields are highlighted and nothing moves on until someone confirms them |
+| Unknown supplier | Flagged instead of guessed. Register it from the PDF with the **local LLM** (deterministic stand-in by default; set `OLLAMA_URL` to call a real Ollama model, as production does) |
+| Suppliers that send links | The link scraper downloads the invoice from the (fictional) supplier portal |
+| Missing invoice | A boleto without its NF waits; one click e-mails the supplier, and the reply re-enters the pipeline |
+| Approval workflow | Purchasing replies with the purchase-order number, Fiscal replies "FISCAL OK" with a cover sheet. Both replies are **parsed from the thread** with the production rules |
+| Archive & print | SharePoint archive (mocked URL) and a printable package: cover + NF + boleto merged into one PDF |
+| Finance | Consolidated `.xlsx` spreadsheet (openpyxl), downloadable and "sent" to Finance |
+| History | Completed and deleted threads; deleted ones can be restored to the queue |
+| Observability | `/metrics` in Prometheus format (production charts these in Grafana) |
+| Bilingual | PT/EN toggle. In Portuguese, statuses show the production names (*Aguardando Compras*, *Pronto para Impressão*…); messages already on screen are translated too |
 
-## 🖼️ Telas
+Each visitor gets an **isolated sandbox** seeded with two months of history: in the browser build it lives in the visitor's own tab; in server mode it is cookie-scoped and evicted after inactivity. Nobody sees anyone else's clicks and no database is needed.
 
-<img src="docs/capturas/02-dashboard.png" alt="Painel de controle da automação fiscal">
+## Architecture (production)
 
-<sub><b>Visão Geral</b> — fila de processamento, indicadores do mês e NF-e extraídas.</sub>
-
-As demais telas:
-
-<details>
-<summary><b>Login</b> — autenticação do ambiente de demonstração</summary>
-<br>
-<img src="docs/capturas/01-login.png" alt="Tela de login">
-</details>
-
-<details>
-<summary><b>Histórico</b> — documentos concluídos e excluídos, com restauração</summary>
-<br>
-<img src="docs/capturas/03-historico.png" alt="Histórico de processamento">
-</details>
-
-<details>
-<summary><b>Envio Manual</b> — upload de PDF/XML e agrupamento por fornecedor</summary>
-<br>
-<img src="docs/capturas/04-envio-manual.png" alt="Envio manual de documentos">
-</details>
-
-<details>
-<summary><b>Fornecedores</b> — dicionário de chaves por unidade</summary>
-<br>
-<img src="docs/capturas/05-fornecedores.png" alt="Gestão de fornecedores">
-</details>
-
-<details>
-<summary><b>Descrições</b> — normalização de nomes e descrição padrão</summary>
-<br>
-<img src="docs/capturas/06-descricoes.png" alt="Descrições e normalizações">
-</details>
-
-<details>
-<summary><b>Relatório</b> — quem envia Nota Fiscal e quem envia Boleto</summary>
-<br>
-<img src="docs/capturas/07-relatorio.png" alt="Relatório de fornecedores">
-</details>
-
-<details>
-<summary><b>Configurações</b> — roteamento de notas e serviços do robô</summary>
-<br>
-<img src="docs/capturas/08-configuracoes.png" alt="Configurações do sistema">
-</details>
-
-<details>
-<summary><b>Usuários</b> — perfis e restrição por caixa (RBAC)</summary>
-<br>
-<img src="docs/capturas/09-usuarios.png" alt="Gerenciamento de usuários">
-</details>
-
-<details>
-<summary><b>Auditoria</b> — trilha das ações administrativas</summary>
-<br>
-<img src="docs/capturas/10-auditoria.png" alt="Logs de auditoria">
-</details>
-
-## 🚀 Como Executar Localmente
-
-### 1. Pré-requisitos
-- Python 3.9+ instalado
-- Pip e virtualenv
-
-### 2. Passo a Passo
-
-```bash
-# 1. Clone o repositório e acesse a pasta
-git clone https://github.com/sua-organizacao/api-notas-demo.git
-cd api-notas-demo
-
-# 2. Crie um ambiente virtual (opcional, mas recomendado)
-python -m venv venv
-
-# No Windows:
-venv\Scripts\activate
-# No Linux/Mac:
-source venv/bin/activate
-
-# 3. Instale as dependências
-pip install -r requirements.txt
-
-# 4. Inicie o servidor FastAPI localmente
-uvicorn main:app --reload --port 8080
+```mermaid
+flowchart LR
+    subgraph M365[Microsoft 365]
+        MB[(Shared mailbox)]
+        SP[(SharePoint)]
+    end
+    SUP[Suppliers] -- invoices / links --> MB
+    MB -- Graph API: read, move, flag --> ING[Ingestion & thread tracking]
+    ING --> PIPE[Extraction pipeline<br/>pdfplumber / pypdf<br/>Tesseract OCR<br/>supplier rules + regex]
+    ING -- no attachment --> SCR[Link scrapers<br/>Playwright]
+    SCR --> PIPE
+    PIPE -- unknown supplier --> LLM[Local LLM<br/>Ollama]
+    PIPE --> DB[(PostgreSQL)]
+    DB --> WF[Workflow engine]
+    WF -- forward thread --> PUR[Purchasing]
+    WF -- forward thread --> FIS[Fiscal]
+    PUR -- reply with PO --> MB
+    FIS -- FISCAL OK + cover --> MB
+    WF -- package --> SP
+    WF -- spreadsheet --> FIN[Finance]
+    UI[Web UI<br/>FastAPI + Jinja] --- DB
+    PROM[Prometheus] -- /metrics --> UI
+    PROM --> GRAF[Grafana]
 ```
 
-> **Acesso:** Abra seu navegador em `http://localhost:8080` para visualizar a interface!
+## Workflow
 
-## 📂 Estrutura do Projeto
-
-```bash
-api-notas-demo/
-├── main.py                # API FastAPI: rotas da interface + endpoints "Mock"
-├── requirements.txt       # Dependências (fastapi, uvicorn, jinja2, python-multipart)
-├── render.yaml            # Blueprint de deploy no Render
-├── templates/             # HTMLs da interface do usuário (White-label)
-│   ├── notas.html         # Visão geral / fila de processamento
-│   ├── historico.html     # Histórico de documentos
-│   ├── manual.html        # Envio manual
-│   ├── fornecedores.html  # Dicionário de fornecedores
-│   ├── descricoes.html    # Descrições e normalizações
-│   ├── relatorio.html     # Relatório de fornecedores
-│   ├── configuracoes.html # Parâmetros do sistema
-│   ├── usuarios.html      # Controle de acesso
-│   ├── auditoria.html     # Trilha de auditoria
-│   └── logs.html          # Log do robô
-├── static/                # Assets estáticos
-│   ├── css/
-│   ├── js/
-│   └── images/
-└── docs/capturas/         # Capturas de tela usadas neste README
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: e-mail arrives
+    Pending --> AwaitingPurchasing: extracted
+    Pending --> AwaitingFiscal: extracted (direct-to-Fiscal supplier)
+    Pending --> MissingInvoice: boleto without NF
+    Pending --> Pending: needs review (editable preview)
+    MissingInvoice --> Pending: supplier replies with the NF
+    Pending --> Deleted
+    MissingInvoice --> Deleted
+    Deleted --> Pending: restore
+    AwaitingPurchasing --> ReadyForFiscal: Purchasing replies with PO number
+    ReadyForFiscal --> AwaitingFiscal: forwarded to Fiscal
+    AwaitingFiscal --> ReadyToPrint: "FISCAL OK" + cover, archived to SharePoint
+    ReadyToPrint --> Completed: printed and closed
 ```
 
-## 🔒 Aviso de Segurança e Privacidade
+| Demo (English) | Production (Portuguese) |
+|---|---|
+| Pending | Pendente |
+| Missing invoice | Sem Nota Fiscal |
+| Awaiting Purchasing | Aguardando Compras |
+| Ready for Fiscal | Aguardando Envio Fiscal |
+| Awaiting Fiscal | Aguardando Fiscal / Direto Fiscal |
+| Ready to print | Pronto para Impressão |
+| Completed | Concluído |
+| Deleted | Excluído |
 
-Este ambiente foi desenhado estritamente para **demonstração**. 
-* **Não** conecte este repositório ao banco de dados em produção.
-* As rotas de leitura de e-mail e processamento usam funções `asyncio.sleep()` para imitar tempo de rede/processamento, e os dados de `EXTRACTED_NFS` ficam salvos apenas em memória. 
+Invalid transitions are refused with HTTP 409 (`app/workflow.py`).
+
+## Technical decisions
+
+1. **The mailbox stays organized as the database changes.** Every status change also moves the message in Microsoft 365 (`Fila_Pendente`, `Fila_Excluidos`) and sets its read flag. People who never open the web app still see an inbox that reflects the real state, and restoring a deleted e-mail undoes both sides.
+2. **Rules first, LLM only where it pays off.** Extraction is deterministic: a supplier rules file plus regex patterns, so results are auditable, fast and free. The LLM is only used to *register* a new supplier from its first PDF. It runs **locally** (Ollama), so invoices never leave the network.
+3. **Never guess.** A missing field, an unknown supplier or a low-confidence OCR read sends the e-mail to human review with an editable preview. A wrong amount sent to Finance costs more than a minute of review.
+4. **NF-first pairing.** Suppliers send the invoice and the boleto as separate PDFs, as one combined PDF, or the boleto first and the invoice days later. Records are built around the invoice, and the boleto is matched by amount to supply the due date.
+5. **Replies drive the workflow.** Nobody updates a status by hand. The system recognizes replies in the thread: a purchase-order number from Purchasing (several formats seen in practice), "FISCAL OK" from Fiscal, or a supplier reply with the missing invoice.
+6. **Suppliers that don't attach PDFs** get a small scraper each. If no link is recognized, the e-mail stays in the queue: it is never silently marked as done.
+7. **Observability from day one.** Prometheus metrics (app, PostgreSQL and Redis exporters) and a provisioned Grafana dashboard. When something breaks, the person who gets the ticket can see it.
+8. **Demo-specific:** sample PDFs are generated at runtime from text fixtures (`app/samples.py`, `app/pdfgen.py`), so the repository contains no binary or real documents and every sample can be reviewed as plain text.
+9. **Demo-specific: one route table, two runtimes.** `app/api.py` holds the HTTP routes. FastAPI serves them on a server (`app/main.py`); on GitHub Pages, `web/static/runtime.js` hands the page's API calls to the same table running under Pyodide (`app/browser.py`). The UI cannot tell the difference, and the tests cover both paths.
+10. **Demo-specific: messages are data, not strings.** Every user-facing message is an `(en, pt)` pair (`app/i18n.py`) translated at the API boundary, so business code never formats text for one language.
+
+## Production stack
+
+Python · FastAPI · PostgreSQL (SQLAlchemy, Alembic) · Redis · Microsoft Graph API (mail, SharePoint, OAuth2) · pdfplumber / pypdf · Tesseract OCR (pdf2image, pytesseract) · Playwright · Ollama (local LLM) · openpyxl / pandas · ReportLab · JWT auth · Prometheus + Grafana · Docker Compose · GitHub Actions (tests, lint, Bandit security scan, Docker build).
+
+The demo uses a subset: FastAPI (server mode), pypdf, openpyxl, Pyodide (browser mode) and vanilla JavaScript.
+
+## Run locally
+
+Server mode (FastAPI):
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate    Linux/macOS: source .venv/bin/activate
+pip install -r requirements-dev.txt
+uvicorn app.main:app --reload
+# open http://localhost:8000
+pytest -q
+```
+
+Browser mode, exactly what GitHub Pages serves:
+
+```bash
+python tools/build_site.py
+python -m http.server 8000 -d _site
+# open http://localhost:8000
+```
+
+Optional, to register suppliers with a real local LLM (server mode):
+
+```bash
+OLLAMA_URL=http://localhost:11434/api/chat OLLAMA_MODEL=llama3.1:8b uvicorn app.main:app
+```
+
+## Project layout
+
+```
+app/
+  api.py           route table shared by both runtimes
+  main.py          server runtime (FastAPI): session cookie, one sandbox per visitor
+  browser.py       browser runtime (Pyodide): called by web/static/runtime.js
+  sandbox.py       business logic: ingestion, processing, review, workflow, finance
+  extraction.py    PDF → text → classification → supplier → fields → NF/boleto records
+  workflow.py      states, allowed transitions, mailbox folder mapping
+  integrations.py  mocks: Graph mailbox, OCR, link scraper, local LLM, SharePoint, outbox
+  i18n.py          (en, pt) message pairs, localized at the API boundary
+  samples.py       fictional suppliers, documents and e-mails
+  pdfgen.py        dependency-free PDF writer for the fixtures
+config/vendor_rules.json   supplier rules (same shape as production, fictional content)
+web/                       UI: index.html, static/ (app.js, i18n.js, runtime.js, app.css)
+tools/build_site.py        static build for GitHub Pages (UI + Python package + pinned wheels)
+tests/                     pytest
+```
+
+## Hosting
+
+GitHub Pages, free and always on. `.github/workflows/pages.yml` runs the tests, builds the static site and publishes it on every push to `main`. The `Dockerfile` runs server mode on any container host if needed.
 
 ---
-<div align="center">
-Desenvolvido com foco na melhor experiência de uso para times financeiros e fiscais.
-</div>
+
+Built by [gualmeidap](https://github.com/gualmeidap)

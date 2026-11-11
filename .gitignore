@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.egg-info/
 .Python
+.pytest_cache/
 
 # Ambientes virtuais
 venv/
@@ -13,6 +14,9 @@ env/
 # Variáveis de ambiente
 .env
 .env.*
+
+# Build estático (GitHub Pages)
+_site/
 
 # Editores e SO
 .vscode/

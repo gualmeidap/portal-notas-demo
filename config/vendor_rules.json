@@ -1,0 +1,26 @@
+{
+  "_comment": "Fictional suppliers. Same shape as the production rules file: the key is a normalized string searched in the document text; CNPJs are fake.",
+  "vendor_map": {
+    "FIBRANORTE": {"fornecedor": "FibraNorte Telecom", "unidade": "North Campus", "cnpj": "11.222.333/0001-81", "sender_domain": "fibranorte.example", "direct_to_fiscal": false},
+    "AURORA NET": {"fornecedor": "Aurora Net Provedor", "unidade": "South Campus", "cnpj": "22.333.444/0001-92", "sender_domain": "auroranet.example", "direct_to_fiscal": false},
+    "VALELINK": {"fornecedor": "ValeLink Internet", "unidade": "East Campus", "cnpj": "33.444.555/0001-03", "sender_domain": "valelink.example", "direct_to_fiscal": false},
+    "SINALMAX": {"fornecedor": "SinalMax Telecom", "unidade": "West Campus", "cnpj": "44.555.666/0001-14", "sender_domain": "sinalmax.example", "direct_to_fiscal": false},
+    "PONTOCOM FIBRA": {"fornecedor": "PontoCom Fibra", "unidade": "Downtown Campus", "cnpj": "55.666.777/0001-25", "sender_domain": "pontocomfibra.example", "direct_to_fiscal": false},
+    "NUVEMCERTA": {"fornecedor": "NuvemCerta Hosting", "unidade": "Headquarters", "cnpj": "66.777.888/0001-36", "sender_domain": "nuvemcerta.example", "direct_to_fiscal": true},
+    "ASSINAFACIL": {"fornecedor": "AssinaFácil", "unidade": "Headquarters", "cnpj": "77.888.999/0001-47", "sender_domain": "assinafacil.example", "direct_to_fiscal": true},
+    "REGISTRA DOMINIOS": {"fornecedor": "Registra Domínios", "unidade": "Headquarters", "cnpj": "88.999.000/0001-58", "sender_domain": "registra.example", "direct_to_fiscal": true}
+  },
+  "boleto_kw": ["boleto", "linha digitavel", "nosso numero", "cedente", "sacado", "codigo de barras", "beneficiario", "pagador", "vencimento", "agencia"],
+  "nf_kw": ["nota fiscal", "nfs-e", "nf-e", "danfe", "chave de acesso", "prestador de servicos", "tomador de servicos", "discriminacao dos servicos", "inscricao municipal", "codigo de verificacao"],
+  "regex_patterns": {
+    "numero": "(?:numero\\s+da\\s+nota|n[o0]\\s+da\\s+nota|nfs-e\\s+n[o0]?\\.?|nota\\s+fiscal\\s+n[o0]?\\.?)[\\s:]*0*(\\d{1,9})",
+    "emissao": "(?:data\\s+de\\s+emissao|emissao|emitida\\s+em)[\\s:]*(\\d{2}/\\d{2}/\\d{4})",
+    "vencimento": "(?:data\\s+de\\s+vencimento|vencimento|pagar\\s+ate|pagavel\\s+ate)[\\s:]*(\\d{2}/\\d{2}/\\d{4})",
+    "valor_rotulado": "(?:valor\\s+total\\s+da\\s+nota|valor\\s+total\\s+a\\s+pagar|valor\\s+do\\s+documento|valor\\s+total|total\\s+a\\s+pagar|valor\\s+cobrado)[\\s:]*(?:r\\$)?\\s*(\\d{1,3}(?:\\.\\d{3})*,\\d{2})",
+    "valor_qualquer": "r\\$\\s*(\\d{1,3}(?:\\.\\d{3})*,\\d{2})",
+    "cnpj": "(\\d{2}\\.\\d{3}\\.\\d{3}/\\d{4}-\\d{2})",
+    "descricao": "(?:discriminacao\\s+dos\\s+servicos|descricao\\s+do\\s+servico|descricao)[\\s:]*(.+)",
+    "competencia": "(?:competencia|referencia|periodo)[\\s:]*(\\d{2}/\\d{4})",
+    "razao_social": "razao\\s+social[\\s:]*(.+)"
+  }
+}
