@@ -1,4 +1,4 @@
-> 🇧🇷 [Versão em português](README.pt-BR.md)
+[![English](https://img.shields.io/badge/English-0A66C2?style=for-the-badge)](README.md) [![Português](https://img.shields.io/badge/Portugu%C3%AAs-lightgrey?style=for-the-badge)](README.pt-BR.md)
 
 # Portal Notas: supplier invoice automation (public demo)
 

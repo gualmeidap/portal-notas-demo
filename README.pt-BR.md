@@ -1,4 +1,6 @@
-> 🇺🇸 [English version](README.md) · **Demo ao vivo:** https://gualmeidap.github.io/portal-notas-demo/ (roda inteira no seu navegador; PT/EN no canto superior direito)
+[![English](https://img.shields.io/badge/English-lightgrey?style=for-the-badge)](README.md) [![Português](https://img.shields.io/badge/Portugu%C3%AAs-0A66C2?style=for-the-badge)](README.pt-BR.md)
+
+> **Demo ao vivo:** https://gualmeidap.github.io/portal-notas-demo/ (roda inteira no seu navegador; PT/EN no canto superior direito)
 
 # Portal Notas: automação de faturas de fornecedores (demo pública)
 
